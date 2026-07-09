@@ -15,7 +15,7 @@ import {
   editIssueLabels,
   gh,
   hasOpenPr,
-  passesVerdict,
+  parseVerifierVerdict,
   recordMetric,
   runGate,
 } from "./lib";
@@ -24,9 +24,11 @@ const MAX_REVIEW_CYCLES = 3;
 const MAX_BUILD_ATTEMPTS = 3;
 const MAX_VERIFY_ROUNDS = 2;
 
-// The container only inherits env we pass to the agent provider (host env is NOT
-// forwarded). The agent needs its Claude credential; gh is intentionally absent
-// (issue text is injected), so no GitHub token is passed in.
+// The container inherits env we pass to the agent provider, plus every key named
+// in .sandcastle/.env (sandcastle's resolveEnv fills each from .env or the host
+// process.env) — nothing else from the host env. The agent needs its Claude
+// credential; gh is intentionally absent (issue text is injected), so no GitHub
+// token is passed in.
 const CLAUDE_ENV = {
   CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN ?? "",
 };
@@ -171,14 +173,24 @@ for (const issue of issues.sort((a, b) => a.number - b.number)) {
           promptArgs: { ISSUE: issueText, BASE },
           name: `verify-${round}`,
         });
-        if (passesVerdict(verify.stdout)) {
+        const verdict = parseVerifierVerdict(verify.stdout);
+        if (verdict.verdict === "pass") {
           verified = true;
           break;
         }
-        console.log(`#${issue.number}: correctness verdict = fail (round ${round}).`);
+        if (verdict.verdict === "missing") {
+          console.log(
+            `#${issue.number}: verifier emitted no VERDICT line (round ${round}) — treating as fail.`,
+          );
+        } else {
+          console.log(`#${issue.number}: correctness verdict = fail (round ${round}).`);
+        }
         if (round === MAX_VERIFY_ROUNDS) break;
+        const gap = verdict.reason
+          ? `The verifier named this specific gap: ${verdict.reason}`
+          : "The verifier did not name a specific gap — a stated acceptance criterion or an edge case (boundaries, empty or missing input, error paths) is unmet.";
         build = await implementUntilGreen(
-          `An independent verifier judged the change does NOT fully satisfy issue #${issue.number}: a stated acceptance criterion or an edge case (boundaries, empty or missing input, error paths) is unmet. Re-read the issue and strengthen the implementation and its tests so every acceptance criterion and edge case is covered.`,
+          `An independent verifier judged the change does NOT fully satisfy issue #${issue.number}. ${gap} Re-read the issue and strengthen the implementation and its tests so every acceptance criterion and edge case is covered.`,
         );
         if (build !== "green") break;
       }
@@ -257,9 +269,10 @@ for (const issue of issues.sort((a, b) => a.number - b.number)) {
     }
 
     // 5. Push review/fix commits and post the reviewer's outcome on the PR.
-    //    The objective gate and the secret scan run once more first — a review
-    //    fix must not land red or leak a key.
-    const finalGate = runGate(sandbox.worktreePath);
+    //    The secret scan and the objective gate run once more first — a review
+    //    fix must not leak a key or land red, and either one withholds the fix
+    //    commits entirely. Scan for secrets before the gate so a leaked key
+    //    short-circuits without wasting a full lint and test run.
     if (diffHasSecret(sandbox.worktreePath)) {
       console.error(
         `#${issue.number}: secret appeared in the diff during review — safety stop, not pushing the fix commits.`,
@@ -268,30 +281,35 @@ for (const issue of issues.sort((a, b) => a.number - b.number)) {
       recordMetric(issue.number, "secret-detected", cyclesUsed, elapsedSeconds());
       continue;
     }
+    const finalGate = runGate(sandbox.worktreePath);
+    if (!finalGate.ok) {
+      console.error(
+        `#${issue.number}: objective gate red after the review loop — withholding the fix commits.`,
+      );
+      gh([
+        "pr", "comment", prNumber, "--repo", REPO, "--body",
+        `**Automated review produced fix commits, but they left the objective gate RED** (lint or tests failing in \`${TEST_DIR}\`), so they were NOT pushed. The branch is left local for inspection.`,
+      ]);
+      editIssueLabels(issue.number, [HUMAN_LABEL], [WORKING_LABEL]);
+      recordMetric(issue.number, "gate-red", cyclesUsed, elapsedSeconds());
+      continue;
+    }
     pushBranch(branch);
-    const gateNote = finalGate.ok
-      ? ""
-      : `\n\n**Objective gate is RED** (lint or tests failing in \`${TEST_DIR}\`) — needs a human look before merging.`;
     const summary =
-      (lastVerdict?.verdict === "approve"
+      lastVerdict?.verdict === "approve"
         ? "**Automated review: approved.** No outstanding findings."
         : `**Automated review: changes still open** after ${MAX_REVIEW_CYCLES} cycle(s):\n\n${(lastVerdict?.findings ?? [])
             .map((f) => `- ${f}`)
-            .join("\n")}`) + gateNote;
+            .join("\n")}`;
     gh(["pr", "comment", prNumber, "--repo", REPO, "--body", summary]);
 
-    if (finalGate.ok) {
-      editIssueLabels(issue.number, [], [WORKING_LABEL]);
-      recordMetric(
-        issue.number,
-        lastVerdict?.verdict === "approve" ? "approved" : "changes-open",
-        cyclesUsed,
-        elapsedSeconds(),
-      );
-    } else {
-      editIssueLabels(issue.number, [HUMAN_LABEL], [WORKING_LABEL]);
-      recordMetric(issue.number, "gate-red", cyclesUsed, elapsedSeconds());
-    }
+    editIssueLabels(issue.number, [], [WORKING_LABEL]);
+    recordMetric(
+      issue.number,
+      lastVerdict?.verdict === "approve" ? "approved" : "changes-open",
+      cyclesUsed,
+      elapsedSeconds(),
+    );
     console.log(`#${issue.number} → PR #${prNumber} ready (not merged).`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -10,7 +10,10 @@ import {
   writeJson,
   writeText,
 } from "../shared/common";
-import { fetchPullRequestContext } from "../shared/review-context";
+import {
+  currentDiffLines,
+  fetchPullRequestContext,
+} from "../shared/review-context";
 import {
   filterInlineComments,
   filterReplies,
@@ -23,6 +26,13 @@ const BRANCH = required("BRANCH");
 
 try {
   const context = fetchPullRequestContext(PR_NUMBER);
+
+  // noSandbox forwards process.env to the agent; drop the write-scope GitHub token
+  // so injected PR or issue text cannot direct the agent to use it. All gh reads
+  // are done, and the checkout sets persist-credentials: false so it is not in
+  // .git/config either.
+  delete process.env.GH_TOKEN;
+  delete process.env.GITHUB_TOKEN;
 
   const result = await runWithExtraction({
     name: `review-pr-${PR_NUMBER}`,
@@ -50,9 +60,11 @@ try {
     ),
   });
 
+  // The agent may have committed, shifting line numbers; validate against the
+  // post-run diff, which matches the commit_id the review is posted against.
   const validInlineComments = filterInlineComments(
     result.output.inlineComments,
-    context.diffLines,
+    currentDiffLines(),
   );
   const validReplies = filterReplies(
     result.output.replies,
@@ -73,7 +85,6 @@ try {
   });
   writeJson("replies.json", validReplies);
   writeText("summary.md", result.output.summary);
-  writeText("verdict.txt", result.commits.length > 0 ? "improved" : "clean");
 
   console.log("Review complete.");
   console.log(`Commits: ${result.commits.length}.`);

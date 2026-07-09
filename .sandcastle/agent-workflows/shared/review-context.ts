@@ -19,9 +19,18 @@ export interface PullRequestContext {
   readonly linkedIssue: string;
   readonly diff: string;
   readonly prCommentsJson: string;
-  readonly diffLines: Map<string, Set<number>>;
   readonly validReplyIds: Set<string>;
 }
+
+export const currentDiffLines = (): Map<string, Set<number>> =>
+  parseDiffLines(diffToBase());
+
+const diffToBase = (): string =>
+  safeSh(`git diff ${config.base}...HEAD`) ||
+  sh(`git diff ${config.base}..HEAD`);
+
+const THREADS_PAGE_SIZE = 100;
+const COMMENTS_PAGE_SIZE = 50;
 
 export const fetchPullRequestContext = (
   prNumber: string,
@@ -58,17 +67,22 @@ export const fetchPullRequestContext = (
     submitted_at?: string | null;
   }[];
 
-  const [owner, repo] = (process.env.GH_REPO ?? "").split("/");
+  const ghRepo = process.env.GH_REPO ?? "";
+  if (!ghRepo.includes("/")) {
+    throw new Error(
+      `GH_REPO must be set to "owner/repo" to fetch review threads; got "${ghRepo}".`,
+    );
+  }
+  const [owner, repo] = ghRepo.split("/");
   const query = `
 query($owner:String!,$repo:String!,$number:Int!) {
   repository(owner:$owner,name:$repo) {
     pullRequest(number:$number) {
-      reviewThreads(first:100) {
+      reviewThreads(first:${THREADS_PAGE_SIZE}) {
         nodes {
           id
           isResolved
-          isOutdated
-          comments(first:50) {
+          comments(first:${COMMENTS_PAGE_SIZE}) {
             nodes {
               id
               path
@@ -122,10 +136,22 @@ query($owner:String!,$repo:String!,$number:Int!) {
     };
   };
 
-  const unresolvedThreads =
-    threadsParsed.data?.repository?.pullRequest?.reviewThreads?.nodes?.filter(
-      (thread) => !thread.isResolved,
-    ) ?? [];
+  const allThreads =
+    threadsParsed.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+  if (allThreads.length === THREADS_PAGE_SIZE) {
+    console.warn(
+      `PR #${prNumber} has ${THREADS_PAGE_SIZE}+ review threads; the query is not paginated, so some threads may be missing.`,
+    );
+  }
+  for (const thread of allThreads) {
+    if (thread.comments.nodes.length === COMMENTS_PAGE_SIZE) {
+      console.warn(
+        `Review thread ${thread.id} has ${COMMENTS_PAGE_SIZE}+ comments; the query is not paginated, so some comments may be missing.`,
+      );
+    }
+  }
+
+  const unresolvedThreads = allThreads.filter((thread) => !thread.isResolved);
 
   const reviewThreads: ReviewThreadComment[] = unresolvedThreads.flatMap(
     (thread) =>
@@ -156,9 +182,7 @@ query($owner:String!,$repo:String!,$number:Int!) {
     review_threads: reviewThreads,
   };
 
-  const diff =
-    safeSh(`git diff ${config.base}...HEAD`) ||
-    sh(`git diff ${config.base}..HEAD`);
+  const diff = diffToBase();
 
   return {
     prTitle: prView.title,
@@ -168,7 +192,6 @@ query($owner:String!,$repo:String!,$number:Int!) {
     linkedIssue,
     diff,
     prCommentsJson: JSON.stringify(prComments, null, 2),
-    diffLines: parseDiffLines(diff),
     validReplyIds: new Set(reviewThreads.map((comment) => comment.commentId)),
   };
 };

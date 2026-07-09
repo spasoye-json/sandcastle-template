@@ -12,6 +12,7 @@ Conventions an agent must follow when changing this repo. Read alongside `.sandc
 ## Branching
 
 - Branch off the base branch. Never merge the base branch into a feature branch; rebase onto it instead.
+- Exception: the automated `agent-update-branch` conflict-resolution workflow merges the base branch into the PR branch, and only that flow may do so.
 
 ## Comments
 
