@@ -17,7 +17,8 @@ RUN groupmod -o -g "$AGENT_GID" node \
 USER ${AGENT_UID}:${AGENT_GID}
 
 # Claude Code CLI (authenticated at runtime via CLAUDE_CODE_OAUTH_TOKEN).
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Pinned version — bump deliberately after testing, don't float to latest.
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.205
 ENV PATH="/home/agent/.local/bin:${PATH}"
 
 WORKDIR /home/agent

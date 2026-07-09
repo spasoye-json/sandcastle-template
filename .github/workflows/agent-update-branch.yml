@@ -77,7 +77,8 @@ jobs:
 
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        # Pinned so upgrades are deliberate; bump this version on purpose.
+        run: npm install -g @anthropic-ai/claude-code@2.1.205
 
       - name: Run update-branch agent
         id: run

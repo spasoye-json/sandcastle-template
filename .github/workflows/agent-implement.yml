@@ -140,7 +140,8 @@ jobs:
 
       - name: Install Claude Code
         if: steps.shape.outputs.proceed == 'true' && steps.preflight.outputs.refused != 'true'
-        run: npm install -g @anthropic-ai/claude-code
+        # Pinned so upgrades are deliberate; bump this version on purpose.
+        run: npm install -g @anthropic-ai/claude-code@2.1.205
 
       - name: Run implementation agent
         if: steps.shape.outputs.proceed == 'true' && steps.preflight.outputs.refused != 'true'
