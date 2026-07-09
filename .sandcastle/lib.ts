@@ -109,10 +109,22 @@ export const diffHasSecret = (worktreePath: string): boolean => {
   return SECRET_PATTERNS.some((pattern) => pattern.test(added));
 };
 
-export const passesVerdict = (text: string): boolean => {
-  const matches = [...text.matchAll(/VERDICT:\s*(pass|fail)/gi)];
-  if (matches.length === 0) return false;
-  return matches[matches.length - 1][1].toLowerCase() === "pass";
+// The verifier's last line is `VERDICT: pass` or `VERDICT: fail — <reason>`.
+// "missing" means no VERDICT line was found at all (malformed output).
+export type VerifierVerdict = {
+  verdict: "pass" | "fail" | "missing";
+  reason: string;
+};
+
+export const parseVerifierVerdict = (text: string): VerifierVerdict => {
+  const matches = [...text.matchAll(/VERDICT:\s*(pass|fail)\s*(?:[—–:-]+\s*(.*))?/gi)];
+  if (matches.length === 0) return { verdict: "missing", reason: "" };
+  const last = matches[matches.length - 1];
+  const verdict = last[1].toLowerCase() as "pass" | "fail";
+  return {
+    verdict,
+    reason: verdict === "fail" ? (last[2] ?? "").trim() : "",
+  };
 };
 
 export const recordMetric = (

@@ -15,7 +15,7 @@ import {
   editIssueLabels,
   gh,
   hasOpenPr,
-  passesVerdict,
+  parseVerifierVerdict,
   recordMetric,
   runGate,
 } from "./lib";
@@ -171,14 +171,24 @@ for (const issue of issues.sort((a, b) => a.number - b.number)) {
           promptArgs: { ISSUE: issueText, BASE },
           name: `verify-${round}`,
         });
-        if (passesVerdict(verify.stdout)) {
+        const verdict = parseVerifierVerdict(verify.stdout);
+        if (verdict.verdict === "pass") {
           verified = true;
           break;
         }
-        console.log(`#${issue.number}: correctness verdict = fail (round ${round}).`);
+        if (verdict.verdict === "missing") {
+          console.log(
+            `#${issue.number}: verifier emitted no VERDICT line (round ${round}) — treating as fail.`,
+          );
+        } else {
+          console.log(`#${issue.number}: correctness verdict = fail (round ${round}).`);
+        }
         if (round === MAX_VERIFY_ROUNDS) break;
+        const gap = verdict.reason
+          ? `The verifier named this specific gap: ${verdict.reason}`
+          : "The verifier did not name a specific gap — a stated acceptance criterion or an edge case (boundaries, empty or missing input, error paths) is unmet.";
         build = await implementUntilGreen(
-          `An independent verifier judged the change does NOT fully satisfy issue #${issue.number}: a stated acceptance criterion or an edge case (boundaries, empty or missing input, error paths) is unmet. Re-read the issue and strengthen the implementation and its tests so every acceptance criterion and edge case is covered.`,
+          `An independent verifier judged the change does NOT fully satisfy issue #${issue.number}. ${gap} Re-read the issue and strengthen the implementation and its tests so every acceptance criterion and edge case is covered.`,
         );
         if (build !== "green") break;
       }
