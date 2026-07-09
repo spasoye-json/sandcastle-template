@@ -24,9 +24,11 @@ const MAX_REVIEW_CYCLES = 3;
 const MAX_BUILD_ATTEMPTS = 3;
 const MAX_VERIFY_ROUNDS = 2;
 
-// The container only inherits env we pass to the agent provider (host env is NOT
-// forwarded). The agent needs its Claude credential; gh is intentionally absent
-// (issue text is injected), so no GitHub token is passed in.
+// The container inherits env we pass to the agent provider, plus every key named
+// in .sandcastle/.env (sandcastle's resolveEnv fills each from .env or the host
+// process.env) — nothing else from the host env. The agent needs its Claude
+// credential; gh is intentionally absent (issue text is injected), so no GitHub
+// token is passed in.
 const CLAUDE_ENV = {
   CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN ?? "",
 };
