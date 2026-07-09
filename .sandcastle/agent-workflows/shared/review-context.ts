@@ -67,17 +67,22 @@ export const fetchPullRequestContext = (
     submitted_at?: string | null;
   }[];
 
-  const [owner, repo] = (process.env.GH_REPO ?? "").split("/");
+  const ghRepo = process.env.GH_REPO ?? "";
+  if (!ghRepo.includes("/")) {
+    throw new Error(
+      `GH_REPO must be set to "owner/repo" to fetch review threads; got "${ghRepo}".`,
+    );
+  }
+  const [owner, repo] = ghRepo.split("/");
   const query = `
 query($owner:String!,$repo:String!,$number:Int!) {
   repository(owner:$owner,name:$repo) {
     pullRequest(number:$number) {
-      reviewThreads(first:100) {
+      reviewThreads(first:${THREADS_PAGE_SIZE}) {
         nodes {
           id
           isResolved
-          isOutdated
-          comments(first:50) {
+          comments(first:${COMMENTS_PAGE_SIZE}) {
             nodes {
               id
               path
@@ -131,10 +136,22 @@ query($owner:String!,$repo:String!,$number:Int!) {
     };
   };
 
-  const unresolvedThreads =
-    threadsParsed.data?.repository?.pullRequest?.reviewThreads?.nodes?.filter(
-      (thread) => !thread.isResolved,
-    ) ?? [];
+  const allThreads =
+    threadsParsed.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+  if (allThreads.length === THREADS_PAGE_SIZE) {
+    console.warn(
+      `PR #${prNumber} has ${THREADS_PAGE_SIZE}+ review threads; the query is not paginated, so some threads may be missing.`,
+    );
+  }
+  for (const thread of allThreads) {
+    if (thread.comments.nodes.length === COMMENTS_PAGE_SIZE) {
+      console.warn(
+        `Review thread ${thread.id} has ${COMMENTS_PAGE_SIZE}+ comments; the query is not paginated, so some comments may be missing.`,
+      );
+    }
+  }
+
+  const unresolvedThreads = allThreads.filter((thread) => !thread.isResolved);
 
   const reviewThreads: ReviewThreadComment[] = unresolvedThreads.flatMap(
     (thread) =>
