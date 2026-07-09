@@ -269,10 +269,10 @@ for (const issue of issues.sort((a, b) => a.number - b.number)) {
     }
 
     // 5. Push review/fix commits and post the reviewer's outcome on the PR.
-    //    The objective gate and the secret scan run once more first — a review
-    //    fix must not land red or leak a key, so a red gate (like a secret)
-    //    withholds the fix commits entirely.
-    const finalGate = runGate(sandbox.worktreePath);
+    //    The secret scan and the objective gate run once more first — a review
+    //    fix must not leak a key or land red, and either one withholds the fix
+    //    commits entirely. Scan for secrets before the gate so a leaked key
+    //    short-circuits without wasting a full lint and test run.
     if (diffHasSecret(sandbox.worktreePath)) {
       console.error(
         `#${issue.number}: secret appeared in the diff during review — safety stop, not pushing the fix commits.`,
@@ -281,6 +281,7 @@ for (const issue of issues.sort((a, b) => a.number - b.number)) {
       recordMetric(issue.number, "secret-detected", cyclesUsed, elapsedSeconds());
       continue;
     }
+    const finalGate = runGate(sandbox.worktreePath);
     if (!finalGate.ok) {
       console.error(
         `#${issue.number}: objective gate red after the review loop — withholding the fix commits.`,
