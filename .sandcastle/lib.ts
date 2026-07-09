@@ -1,6 +1,7 @@
 import { execSync, execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { defaultImageName } from "@ai-hero/sandcastle/sandboxes/docker";
 import { config } from "./sandcastle.config";
 
 export const REPO = config.repo;
@@ -41,21 +42,40 @@ export const hasOpenPr = (branch: string): boolean =>
 
 export type GateResult = { ok: boolean; output: string };
 
+// Where sandcastle's docker provider mounts the worktree inside the container.
+const SANDBOX_WORKTREE = "/home/agent/workspace";
+
+// The gate runs INSIDE the sandbox container, never on the host: the worktree
+// holds agent-written code, so `npm ci`, lint, and tests must not execute
+// host-side. The public Sandbox handle exposes no exec, so we `docker run` the
+// same image sandcastle's docker provider uses, with the same UID/GID mapping.
 export const runGate = (worktreePath: string): GateResult => {
-  const dir = path.join(worktreePath, TEST_DIR);
   const commands = [...GATE_COMMANDS];
-  if (!fs.existsSync(path.join(dir, "node_modules"))) {
+  if (!fs.existsSync(path.join(worktreePath, TEST_DIR, "node_modules"))) {
     commands.unshift("npm ci");
   }
+  const uid = process.getuid?.() ?? 1000;
+  const gid = process.getgid?.() ?? 1000;
   for (const command of commands) {
     try {
-      console.log(`gate: ${command} (in ${TEST_DIR})`);
-      execSync(command, {
-        cwd: dir,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-        maxBuffer: 64 * 1024 * 1024,
-      });
+      console.log(`gate: ${command} (in ${TEST_DIR}, sandboxed)`);
+      execFileSync(
+        "docker",
+        [
+          "run", "--rm",
+          "--user", `${uid}:${gid}`,
+          "-e", "HOME=/home/agent",
+          "-v", `${path.resolve(worktreePath)}:${SANDBOX_WORKTREE}:z`,
+          "-w", path.posix.join(SANDBOX_WORKTREE, TEST_DIR),
+          defaultImageName(process.cwd()),
+          "bash", "-c", command,
+        ],
+        {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+          maxBuffer: 64 * 1024 * 1024,
+        },
+      );
     } catch (err) {
       const e = err as { stdout?: string; stderr?: string; message?: string };
       const output = [`$ ${command}`, e.stdout ?? "", e.stderr ?? e.message ?? ""]
