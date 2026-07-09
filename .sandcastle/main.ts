@@ -268,7 +268,8 @@ for (const issue of issues.sort((a, b) => a.number - b.number)) {
 
     // 5. Push review/fix commits and post the reviewer's outcome on the PR.
     //    The objective gate and the secret scan run once more first — a review
-    //    fix must not land red or leak a key.
+    //    fix must not land red or leak a key, so a red gate (like a secret)
+    //    withholds the fix commits entirely.
     const finalGate = runGate(sandbox.worktreePath);
     if (diffHasSecret(sandbox.worktreePath)) {
       console.error(
@@ -278,30 +279,34 @@ for (const issue of issues.sort((a, b) => a.number - b.number)) {
       recordMetric(issue.number, "secret-detected", cyclesUsed, elapsedSeconds());
       continue;
     }
+    if (!finalGate.ok) {
+      console.error(
+        `#${issue.number}: objective gate red after the review loop — withholding the fix commits.`,
+      );
+      gh([
+        "pr", "comment", prNumber, "--repo", REPO, "--body",
+        `**Automated review produced fix commits, but they left the objective gate RED** (lint or tests failing in \`${TEST_DIR}\`), so they were NOT pushed. The branch is left local for inspection.`,
+      ]);
+      editIssueLabels(issue.number, [HUMAN_LABEL], [WORKING_LABEL]);
+      recordMetric(issue.number, "gate-red", cyclesUsed, elapsedSeconds());
+      continue;
+    }
     pushBranch(branch);
-    const gateNote = finalGate.ok
-      ? ""
-      : `\n\n**Objective gate is RED** (lint or tests failing in \`${TEST_DIR}\`) — needs a human look before merging.`;
     const summary =
-      (lastVerdict?.verdict === "approve"
+      lastVerdict?.verdict === "approve"
         ? "**Automated review: approved.** No outstanding findings."
         : `**Automated review: changes still open** after ${MAX_REVIEW_CYCLES} cycle(s):\n\n${(lastVerdict?.findings ?? [])
             .map((f) => `- ${f}`)
-            .join("\n")}`) + gateNote;
+            .join("\n")}`;
     gh(["pr", "comment", prNumber, "--repo", REPO, "--body", summary]);
 
-    if (finalGate.ok) {
-      editIssueLabels(issue.number, [], [WORKING_LABEL]);
-      recordMetric(
-        issue.number,
-        lastVerdict?.verdict === "approve" ? "approved" : "changes-open",
-        cyclesUsed,
-        elapsedSeconds(),
-      );
-    } else {
-      editIssueLabels(issue.number, [HUMAN_LABEL], [WORKING_LABEL]);
-      recordMetric(issue.number, "gate-red", cyclesUsed, elapsedSeconds());
-    }
+    editIssueLabels(issue.number, [], [WORKING_LABEL]);
+    recordMetric(
+      issue.number,
+      lastVerdict?.verdict === "approve" ? "approved" : "changes-open",
+      cyclesUsed,
+      elapsedSeconds(),
+    );
     console.log(`#${issue.number} → PR #${prNumber} ready (not merged).`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
