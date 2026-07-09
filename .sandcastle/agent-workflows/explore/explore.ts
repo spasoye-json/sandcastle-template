@@ -33,6 +33,11 @@ try {
     safeSh(`gh issue view ${ISSUE_NUMBER} --comments`) ||
     `Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}`;
 
+  // noSandbox forwards process.env to the agent; drop the write-scope GitHub token
+  // so injected issue text cannot direct the agent to use it. All gh reads are done.
+  delete process.env.GH_TOKEN;
+  delete process.env.GITHUB_TOKEN;
+
   const result = await runWithExtraction({
     name: `explore-#${ISSUE_NUMBER}`,
     agent: claudeAgent(),

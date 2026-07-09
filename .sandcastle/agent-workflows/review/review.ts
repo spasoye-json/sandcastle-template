@@ -24,6 +24,11 @@ const BRANCH = required("BRANCH");
 try {
   const context = fetchPullRequestContext(PR_NUMBER);
 
+  // noSandbox forwards process.env to the agent; drop the write-scope GitHub token
+  // so injected PR/issue text cannot direct the agent to use it. All gh reads are done.
+  delete process.env.GH_TOKEN;
+  delete process.env.GITHUB_TOKEN;
+
   const result = await runWithExtraction({
     name: `review-pr-${PR_NUMBER}`,
     agent: claudeAgent(),
