@@ -83,7 +83,6 @@ try {
   });
   writeJson("replies.json", validReplies);
   writeText("summary.md", result.output.summary);
-  writeText("verdict.txt", result.commits.length > 0 ? "improved" : "clean");
 
   console.log("Review complete.");
   console.log(`Commits: ${result.commits.length}.`);
