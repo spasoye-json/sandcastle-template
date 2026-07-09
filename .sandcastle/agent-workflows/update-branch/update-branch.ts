@@ -29,7 +29,18 @@ const BRANCH = required("BRANCH");
 const BASE_REF = required("BASE_REF");
 
 try {
-  execFileSync("git", ["fetch", "origin", BASE_REF], { stdio: "inherit" });
+  // The Actions checkout no longer persists credentials in .git/config, so
+  // fetch over an explicit token URL. The downstream merge uses the
+  // origin/BASE_REF tracking ref, so map the fetch into it. GH_REPO and
+  // GH_TOKEN come from the workflow env; Actions masks the token in logs.
+  const GH_TOKEN = required("GH_TOKEN");
+  const GH_REPO = required("GH_REPO");
+  const authUrl = `https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git`;
+  execFileSync(
+    "git",
+    ["fetch", authUrl, `${BASE_REF}:refs/remotes/origin/${BASE_REF}`],
+    { stdio: "inherit" },
+  );
 
   const preMergeSha = sh("git rev-parse HEAD").trim();
   const baseSha = sh(`git rev-parse origin/${BASE_REF}`).trim();

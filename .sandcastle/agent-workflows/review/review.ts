@@ -28,7 +28,9 @@ try {
   const context = fetchPullRequestContext(PR_NUMBER);
 
   // noSandbox forwards process.env to the agent; drop the write-scope GitHub token
-  // so injected PR/issue text cannot direct the agent to use it. All gh reads are done.
+  // so injected PR or issue text cannot direct the agent to use it. All gh reads
+  // are done, and the checkout sets persist-credentials: false so it is not in
+  // .git/config either.
   delete process.env.GH_TOKEN;
   delete process.env.GITHUB_TOKEN;
 
