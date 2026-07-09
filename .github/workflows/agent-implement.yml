@@ -188,6 +188,11 @@ jobs:
           AGENT_PAT: ${{ secrets.AGENT_PAT }}
           GITHUB_TOKEN_FALLBACK: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Events created with GITHUB_TOKEN never trigger other workflows
+          # (GitHub anti-recursion), so agent-review.yml only fires when the
+          # label is applied with AGENT_PAT. The fallback still applies the
+          # label for state tracking, but the chain stops there, so tell a
+          # human how to kick off the review.
           set +e
           if [ -n "$AGENT_PAT" ]; then
             GH_TOKEN="$AGENT_PAT" gh pr edit "$PR_NUMBER" --add-label "agent:review"
@@ -197,6 +202,7 @@ jobs:
             fi
           fi
           GH_TOKEN="$GITHUB_TOKEN_FALLBACK" gh pr edit "$PR_NUMBER" --add-label "agent:review"
+          GH_TOKEN="$GITHUB_TOKEN_FALLBACK" gh pr comment "$PR_NUMBER" --body "Applied \`agent:review\` with \`GITHUB_TOKEN\`, which cannot trigger workflows, so the automated review will not start on its own. Configure the \`AGENT_PAT\` secret to enable auto-triggering, or remove and re-add the \`agent:review\` label to run the review manually."
 
       - name: Mark blocked on failure
         if: steps.shape.outputs.proceed == 'true' && steps.preflight.outputs.refused != 'true' && failure()
