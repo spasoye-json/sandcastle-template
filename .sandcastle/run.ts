@@ -2,6 +2,7 @@ import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 import {
   BASE,
+  BRANCH_PREFIX,
   GATE_SENTENCE,
   QUEUE_LABEL,
   TEST_DIR,
@@ -34,7 +35,7 @@ const plan = await sandcastle.run({
   name: "Planner",
   agent: sandcastle.claudeCode("claude-opus-4-8"),
   promptFile: "./.sandcastle/plan-prompt.md",
-  promptArgs: { ISSUES_JSON: issuesJson },
+  promptArgs: { ISSUES_JSON: issuesJson, BRANCH_PREFIX },
 });
 
 const planMatch = plan.stdout.match(/<plan>([\s\S]*?)<\/plan>/);
@@ -47,6 +48,23 @@ if (!planMatch) {
 const { issues } = JSON.parse(planMatch[1]) as {
   issues: { number: number; title: string; branch: string }[];
 };
+
+// The plan is LLM output derived from untrusted issue text — validate every
+// entry before using it as a branch name or gh argument.
+for (const entry of issues) {
+  const validNumber = Number.isInteger(entry.number) && entry.number > 0;
+  const validBranch =
+    typeof entry.branch === "string" &&
+    entry.branch === `${BRANCH_PREFIX}${entry.number}`;
+  const validTitle = typeof entry.title === "string" && entry.title.trim() !== "";
+  if (!validNumber || !validBranch || !validTitle) {
+    throw new Error(
+      `Planner produced an invalid plan entry: ${JSON.stringify(entry)} — ` +
+        `number must be a positive integer, branch must be ${BRANCH_PREFIX}<number> ` +
+        "with the digits matching number, and title must be a non-empty string.",
+    );
+  }
+}
 
 if (issues.length === 0) {
   console.log("No unblocked issues to work on. Exiting.");
