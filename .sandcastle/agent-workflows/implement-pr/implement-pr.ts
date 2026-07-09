@@ -9,7 +9,10 @@ import {
   writeJson,
   writeText,
 } from "../shared/common";
-import { fetchPullRequestContext } from "../shared/review-context";
+import {
+  currentDiffLines,
+  fetchPullRequestContext,
+} from "../shared/review-context";
 import {
   filterInlineComments,
   filterReplies,
@@ -58,9 +61,11 @@ try {
     result.output.threadReplies,
     context.validReplyIds,
   );
+  // The agent may have committed, shifting line numbers; validate against the
+  // post-run diff, which matches the HEAD the comments are posted against.
   const newInlineComments = filterInlineComments(
     result.output.newInlineComments,
-    context.diffLines,
+    currentDiffLines(),
   );
   const hasCommits = result.commits.length > 0;
 

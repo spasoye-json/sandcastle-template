@@ -19,9 +19,18 @@ export interface PullRequestContext {
   readonly linkedIssue: string;
   readonly diff: string;
   readonly prCommentsJson: string;
-  readonly diffLines: Map<string, Set<number>>;
   readonly validReplyIds: Set<string>;
 }
+
+export const currentDiffLines = (): Map<string, Set<number>> =>
+  parseDiffLines(diffToBase());
+
+const diffToBase = (): string =>
+  safeSh(`git diff ${config.base}...HEAD`) ||
+  sh(`git diff ${config.base}..HEAD`);
+
+const THREADS_PAGE_SIZE = 100;
+const COMMENTS_PAGE_SIZE = 50;
 
 export const fetchPullRequestContext = (
   prNumber: string,
@@ -156,9 +165,7 @@ query($owner:String!,$repo:String!,$number:Int!) {
     review_threads: reviewThreads,
   };
 
-  const diff =
-    safeSh(`git diff ${config.base}...HEAD`) ||
-    sh(`git diff ${config.base}..HEAD`);
+  const diff = diffToBase();
 
   return {
     prTitle: prView.title,
@@ -168,7 +175,6 @@ query($owner:String!,$repo:String!,$number:Int!) {
     linkedIssue,
     diff,
     prCommentsJson: JSON.stringify(prComments, null, 2),
-    diffLines: parseDiffLines(diff),
     validReplyIds: new Set(reviewThreads.map((comment) => comment.commentId)),
   };
 };
