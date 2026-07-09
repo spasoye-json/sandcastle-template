@@ -49,13 +49,31 @@ jobs:
           git config user.name "sandcastle-agent[bot]"
           git config user.email "sandcastle-agent[bot]@users.noreply.github.com"
 
+      # pull_request_target runs with secrets and write permissions, so all
+      # tooling (lockfile install scripts, orchestration scripts, prompts)
+      # must come from the base branch. The PR checkout above is data only.
+      - name: Checkout base tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          sparse-checkout: .sandcastle
+          path: .base-tooling
+
+      # actions/checkout only allows paths inside the workspace, and the
+      # workspace is the PR worktree, so move the tooling out before any
+      # agent runs to keep it out of repo-wide git staging (the update-branch
+      # prompt tells the agent to stage everything).
+      - name: Move base tooling out of the workspace
+        run: mv "$GITHUB_WORKSPACE/.base-tooling" "$RUNNER_TEMP/base-tooling"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Install dependencies
-        run: npm ci
+        run: cd "$RUNNER_TEMP/base-tooling" && npm ci
 
 
       - name: Install Claude Code
@@ -66,7 +84,8 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OUTPUT_DIR: ${{ runner.temp }}
-        run: npx tsx .sandcastle/agent-workflows/update-branch/update-branch.ts
+        run: |
+          "$RUNNER_TEMP/base-tooling/node_modules/.bin/tsx" "$RUNNER_TEMP/base-tooling/.sandcastle/agent-workflows/update-branch/update-branch.ts"
 
       - name: Push branch (abort cleanly if non-fast-forward)
         if: success()
