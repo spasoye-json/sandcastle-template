@@ -1,0 +1,92 @@
+# sandcastle-template — AFK agent loops on @ai-hero/sandcastle
+
+Copy template for running unattended coding agents against a GitHub repo's
+triaged issue queue, built on [`@ai-hero/sandcastle`](https://www.npmjs.com/package/@ai-hero/sandcastle).
+Two consumption styles ship side by side:
+
+- **Local runners** — `npm run agent` (`.sandcastle/main.ts`, serial drain with
+  objective lint+test gate, correctness verifier, review↔fix loop, secret scan,
+  metrics) and `npm run agent:parallel` (`.sandcastle/run.ts`, plan → implement →
+  review across up to 4 issues at once, no auto-merge). Agents run in throwaway
+  Docker sandboxes; the host `gh` does all GitHub reads/writes and the container
+  never sees a GitHub token.
+- **GitHub Actions runners** — five label-triggered workflows
+  (`.github/workflows/agent-*.yml` → `.sandcastle/agent-workflows/*`):
+  `agent:explore`, `agent:implement`, `agent:review`, `agent:update-branch`,
+  plus a PR-comment-driven implement-pr flow.
+
+Everything project-specific lives in exactly three consumer-edited files:
+
+| File | Holds |
+|---|---|
+| `.sandcastle/sandcastle.config.ts` | repo slug, base branch, gate dir/commands, labels, branch prefix |
+| `.sandcastle/PROJECT.md` | the project map injected into prompts: layout, docs, check commands, known pre-existing failures |
+| `.sandcastle/CODING_STANDARDS.md` | house rules the reviewer and implementer enforce |
+
+## Install
+
+1. Copy into your project (files live at three top-level paths):
+
+   ```bash
+   npx degit spasoye-json/sandcastle-template /tmp/sc
+   cp -r /tmp/sc/.sandcastle /tmp/sc/.github /tmp/sc/docs .
+   ```
+
+2. Merge the `devDependencies` and the `agent` / `agent:parallel` /
+   `typecheck` scripts from this template's `package.json` into your root
+   `package.json`, then `npm install`. (Keep `tsconfig.json` too if your repo
+   does not already typecheck `.sandcastle/`.)
+
+3. Edit `.sandcastle/sandcastle.config.ts` — set `repo`, `base`, `testDir`,
+   `gateCommands`. Write `.sandcastle/PROJECT.md` and
+   `.sandcastle/CODING_STANDARDS.md` for your project.
+
+4. `cp .sandcastle/.env.example .sandcastle/.env` and set
+   `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`) — used by the local runners.
+
+5. Create the labels (see `docs/agents/triage-labels.md`): the triage trio
+   `ready-for-agent` / `claude-working` / `ready-for-human` for the local
+   runners, and `agent:explore` / `agent:implement` / `agent:review` /
+   `agent:update-branch` (+ state labels `agent:in-progress`, `agent:blocked`)
+   for the Actions runners.
+
+6. For the Actions runners, add repo secrets: `CLAUDE_CODE_OAUTH_TOKEN`, and
+   optionally `AGENT_PAT` (a PAT that authors PRs so `GITHUB_TOKEN`'s
+   own-PR-approval restrictions don't bite; workflows fall back to
+   `GITHUB_TOKEN`).
+
+7. Provide agent skills at `.claude/skills/` in your repo — the local runners
+   vendor that directory into each sandbox worktree (`copyToWorktree`), and the
+   prompts assume a test-first implementer and a strict reviewer skill exist.
+
+8. Local runners need Docker (the sandbox image builds on first run via
+   sandcastle's docker provider).
+
+## Environment
+
+- `GH_REPO` overrides `config.repo` (the Actions workflows set it from
+  `github.repository` automatically).
+- `BASE_BRANCH` overrides `config.base` (the Actions workflows set it from the
+  repo's default branch automatically).
+- `TEST_DIR` overrides `config.testDir`.
+
+## Verify the template standalone
+
+```bash
+npm ci && npm run typecheck
+```
+
+## Layout
+
+```
+.sandcastle/sandcastle.config.ts   the config seam (edit per project)
+.sandcastle/PROJECT.md             project map injected into prompts (edit per project)
+.sandcastle/CODING_STANDARDS.md    house rules (edit per project)
+.sandcastle/main.ts                serial local runner (gate, verify, review loop, metrics)
+.sandcastle/run.ts                 parallel local runner (plan → implement → review)
+.sandcastle/lib.ts                 guardrail helpers (gate, secret scan, labels, metrics)
+.sandcastle/*.md                   prompt files for the local runners
+.sandcastle/agent-workflows/       GitHub Actions runners (one dir per flow + shared/)
+.github/workflows/agent-*.yml      label-triggered workflow wiring
+docs/agents/triage-labels.md       the label contract
+```
