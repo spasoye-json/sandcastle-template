@@ -88,10 +88,14 @@ export const runGate = (worktreePath: string): GateResult => {
           "--init",
           "--user", `${uid}:${gid}`,
           "-e", "HOME=/home/agent",
+          // The image's ENTRYPOINT is `sleep infinity` (the provider execs into
+          // a kept-alive container); without an override the gate command would
+          // be passed to sleep as arguments and never run.
+          "--entrypoint", "bash",
           "-v", `${path.resolve(worktreePath)}:${SANDBOX_WORKTREE}:z`,
           "-w", path.posix.join(SANDBOX_WORKTREE, TEST_DIR),
           image,
-          "bash", "-c", command,
+          "-c", command,
         ],
         {
           encoding: "utf8",
