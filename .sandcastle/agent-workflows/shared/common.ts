@@ -33,6 +33,36 @@ export const safeSh = (cmd: string): string => {
   }
 };
 
+// `gh issue view --comments` prints only the comment thread: with zero
+// comments it prints nothing, so the issue body never reached the prompts.
+// Fetch title, body, and comments explicitly and render them as one text.
+export const fetchIssueText = (issueNumber: string): string => {
+  const raw = safeSh(
+    `gh issue view ${issueNumber} --json title,body,comments`,
+  );
+  if (!raw) {
+    return "";
+  }
+  try {
+    const issue = JSON.parse(raw) as {
+      title?: string;
+      body?: string;
+      comments?: { author?: { login?: string } | null; body?: string }[];
+    };
+    const comments = (issue.comments ?? [])
+      .map(
+        (comment) =>
+          `---\nComment by ${comment.author?.login ?? "unknown"}:\n${comment.body ?? ""}`,
+      )
+      .join("\n\n");
+    return [`# ${issue.title ?? ""}`, issue.body ?? "", comments]
+      .filter(Boolean)
+      .join("\n\n");
+  } catch {
+    return "";
+  }
+};
+
 export const gh = (args: string[]): string =>
   execFileSync("gh", args, {
     encoding: "utf8",

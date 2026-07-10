@@ -1,4 +1,4 @@
-import { gh, safeSh, sh } from "./common";
+import { fetchIssueText, gh, safeSh, sh } from "./common";
 import { parseDiffLines } from "./diff-lines";
 import { config } from "../../sandcastle.config";
 
@@ -54,9 +54,8 @@ export const fetchPullRequestContext = (
   const issueTitle = issueNumber
     ? safeSh(`gh issue view ${issueNumber} --json title --jq .title`).trim()
     : "";
-  const linkedIssue = issueNumber
-    ? safeSh(`gh issue view ${issueNumber} --comments`)
-    : "(no linked issue found)";
+  const linkedIssue =
+    (issueNumber && fetchIssueText(issueNumber)) || "(no linked issue found)";
 
   const reviews = JSON.parse(
     gh(["api", `repos/{owner}/{repo}/pulls/${prNumber}/reviews`]),

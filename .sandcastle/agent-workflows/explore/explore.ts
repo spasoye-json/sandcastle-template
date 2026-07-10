@@ -7,6 +7,7 @@ import {
   asString,
   claudeAgent,
   fail,
+  fetchIssueText,
   required,
   safeSh,
   standardSchema,
@@ -30,7 +31,7 @@ const ISSUE_TITLE = required("ISSUE_TITLE");
 
 try {
   const issueContext =
-    safeSh(`gh issue view ${ISSUE_NUMBER} --comments`) ||
+    fetchIssueText(ISSUE_NUMBER) ||
     `Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}`;
 
   // noSandbox forwards process.env to the agent; drop the write-scope GitHub token

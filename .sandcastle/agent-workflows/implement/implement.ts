@@ -1,7 +1,13 @@
 import * as path from "node:path";
 import * as sandcastle from "@ai-hero/sandcastle";
 import { noSandbox } from "@ai-hero/sandcastle/sandboxes/no-sandbox";
-import { claudeAgent, fail, required, safeSh, sh } from "../shared/common";
+import {
+  claudeAgent,
+  fail,
+  fetchIssueText,
+  required,
+  sh,
+} from "../shared/common";
 import { config } from "../../sandcastle.config";
 
 const ISSUE_NUMBER = required("ISSUE_NUMBER");
@@ -10,7 +16,7 @@ const BRANCH = required("BRANCH");
 
 try {
   const issueContext =
-    safeSh(`gh issue view ${ISSUE_NUMBER} --comments`) ||
+    fetchIssueText(ISSUE_NUMBER) ||
     `Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}`;
 
   // noSandbox forwards process.env to the agent; drop the write-scope GitHub token
