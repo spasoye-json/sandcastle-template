@@ -99,6 +99,13 @@ export const asString = (value: unknown, label: string): string => {
   return value;
 };
 
+export const asBoolean = (value: unknown, label: string): boolean => {
+  if (typeof value !== "boolean") {
+    throw new Error(`${label} must be a boolean`);
+  }
+  return value;
+};
+
 export const asOptionalString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value : undefined;
 

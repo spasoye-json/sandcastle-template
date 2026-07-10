@@ -72,10 +72,21 @@ try {
   );
   const headSha = sh("git rev-parse HEAD").trim();
 
+  // Surface a failed spec check at the top of the posted review so the human
+  // merge gate cannot miss it; the summary alone proved glossable in practice.
+  const reviewBody = result.output.specConformant
+    ? result.output.summary
+    : [
+        "**Spec conformance: FAILED.** Unmet acceptance criteria from the linked issue:",
+        ...result.output.unmetCriteria.map((criterion) => `- ${criterion}`),
+        "",
+        result.output.summary,
+      ].join("\n");
+
   writeJson("review_payload.json", {
     commit_id: headSha,
     event: "COMMENT",
-    body: result.output.summary,
+    body: reviewBody,
     comments: validInlineComments.map((comment) => ({
       path: comment.path,
       line: comment.line,
@@ -84,9 +95,10 @@ try {
     })),
   });
   writeJson("replies.json", validReplies);
-  writeText("summary.md", result.output.summary);
+  writeText("summary.md", reviewBody);
 
   console.log("Review complete.");
+  console.log(`Spec conformant: ${result.output.specConformant}.`);
   console.log(`Commits: ${result.commits.length}.`);
   console.log(`Inline comments: ${validInlineComments.length}.`);
   console.log(`Replies: ${validReplies.length}.`);

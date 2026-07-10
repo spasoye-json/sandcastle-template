@@ -1,5 +1,6 @@
 import {
   asArray,
+  asBoolean,
   asOptionalString,
   asRecord,
   asString,
@@ -19,6 +20,8 @@ export interface ThreadReply {
 
 export interface ReviewOutput {
   readonly summary: string;
+  readonly specConformant: boolean;
+  readonly unmetCriteria: string[];
   readonly inlineComments: InlineComment[];
   readonly replies: ThreadReply[];
 }
@@ -64,6 +67,10 @@ export const reviewOutputSchema = standardSchema<ReviewOutput>((value) => {
   const record = asRecord(value, "review output");
   return {
     summary: asString(record.summary, "summary"),
+    specConformant: asBoolean(record.specConformant, "specConformant"),
+    unmetCriteria: asArray(record.unmetCriteria ?? [], "unmetCriteria").map(
+      (criterion) => asString(criterion, "unmet criterion"),
+    ),
     inlineComments: asArray(record.inlineComments ?? [], "inlineComments").map(
       parseInlineComment,
     ),

@@ -7,7 +7,9 @@ Do not include text outside the `<output>` block.
 ```json
 <output>
 {
-  "summary": "1-3 paragraphs explaining your review, including what you changed or why it was already clean.",
+  "summary": "The acceptance-criteria checklist, then 1-3 paragraphs explaining your review, including what you changed or why it was already clean.",
+  "specConformant": true,
+  "unmetCriteria": ["Each acceptance criterion from the linked issue that the branch still does not meet; empty when specConformant is true"],
   "inlineComments": [
     { "path": "relative/file.ts", "line": 123, "body": "Markdown comment" }
   ],
