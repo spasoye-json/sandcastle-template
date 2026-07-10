@@ -98,6 +98,10 @@ jobs:
       - name: Push branch (abort cleanly if non-fast-forward)
         if: success()
         env:
+          # Push with AGENT_PAT when configured so the push retriggers CI
+          # and the required check runs on the new head. Pushes made with
+          # GITHUB_TOKEN fire no workflows, leaving the PR head unverified.
+          GH_TOKEN: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
           SHOULD_PUSH_FILE: ${{ runner.temp }}/should_push.txt
         run: |
           if [ ! -f "$SHOULD_PUSH_FILE" ] || [ "$(cat "$SHOULD_PUSH_FILE")" != "true" ]; then
