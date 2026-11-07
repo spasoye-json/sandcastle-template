@@ -28,6 +28,20 @@ Two consumption styles ship side by side:
   exception is update-branch, whose agent investigates with `gh` mid-run and
   therefore keeps the token, so that flow retains residual trust in PR
   content.
+- **The `agent:auto` loop:** put `agent:auto` on an issue, and the agents
+  take it to a PR that waits for your review. Implement opens the PR and puts
+  `agent:auto` on it. Each review run then waits for CI on the new head and
+  runs `.sandcastle/agent-workflows/auto/continue.sh`. The PR is green when
+  CI passes, the review finds every acceptance criterion met, and the review
+  has no open change request. A green PR gets `agent:ready`. A PR that is not
+  green gets a round comment with the unmet criteria and the failed CI log,
+  and `agent:implement` starts the fix agent, which hands back to the review.
+  After `AGENT_AUTO_MAX_ROUNDS` fix rounds, 3 by default, the PR gets
+  `agent:blocked`. Put `agent:auto` on an open PR to start the loop at the
+  review. Remove the label to stop the loop after the current run. The loop
+  needs `AGENT_PAT`. Set the repo variable `AGENT_CI_WORKFLOW` when your CI
+  workflow file is not `ci.yml`. Without that file, the loop does not wait
+  for CI.
 
 Everything project-specific lives in exactly three consumer-edited files:
 
@@ -61,8 +75,9 @@ Everything project-specific lives in exactly three consumer-edited files:
 5. Create the labels (see `docs/agents/triage-labels.md`): the triage trio
    `ready-for-agent` / `claude-working` / `ready-for-human` for the local
    runners, and `agent:explore` / `agent:implement` / `agent:review` /
-   `agent:update-branch` (+ state labels `agent:in-progress`, `agent:blocked`)
-   for the Actions runners.
+   `agent:update-branch` / `agent:auto` (+ state labels `agent:in-progress`,
+   `agent:blocked`, `agent:ready`) for the Actions runners. The loop creates
+   `agent:ready` when it is missing.
 
 6. For the Actions runners, add repo secrets: `CLAUDE_CODE_OAUTH_TOKEN`, and
    `AGENT_PAT` (a PAT that authors PRs so `GITHUB_TOKEN`'s own-PR-approval
